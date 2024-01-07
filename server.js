@@ -3,9 +3,16 @@ const fs = require('fs');
 const csv = require('csv-parser');
 const { google } = require('googleapis');
 const { log } = require('console');
+const multer = require('multer')
+const cors = require('cors');
 const app = express();
-const port = 3000;
+const port = 4000;
+const path = require('path')
 const apiKey = 'AIzaSyDgFfQZhNTQOW5J_K81GebJ3fzLqx75OJw';
+
+const upload = multer({dest: 'uploads/'})
+
+app.use(cors());
 
 // Function to get Channel ID from YouTube API
 async function getChannelId(youtube, identifier, isUsername = false) {
@@ -15,7 +22,7 @@ async function getChannelId(youtube, identifier, isUsername = false) {
             part: 'snippet,contentDetails,statistics',
             ...(isUsername ? { forUsername: identifier } : { id: identifier })
         });
-        console.log(response);
+
         if (response.data.items && response.data.items.length > 0) {
             const channel = response.data.items[0];
             return channel ? channel.id : null;
@@ -68,39 +75,56 @@ async function convertToChannelIdUrl(url, youtube) {
     }
 }
 
+async function getLatestVideos(youtube, channelId) {
+    try {
+        const response = await youtube.search.list({
+            part: 'snippet',
+            channelId: channelId,
+            maxResults: 5,
+            order: 'date' // Sort by date to get the latest videos
+        });
 
-app.get('/read-csv', async (req, res) => {
+        return response.data.items.map(item => `https://www.youtube.com/watch?v=${item.id.videoId}`);
+    } catch (error) {
+        console.error('Error fetching latest videos:', error);
+        return [];
+    }
+}
+app.post('/upload-csv',  cors(), upload.single('file'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('No file uploaded.');
+    }
+
+    const filePath = path.join(__dirname, req.file.path);
     const results = [];
-    const validUrls = [];  // Array to store valid URLs
-    const toBeProcessedUrls = [];  // Array to store URLs to be processed
-    const invalidUrls = [];  // Array to store invalid URLs
-    const youtube = google.youtube({
-        version: 'v3',
-        auth: apiKey
-    });
+    const youtube = google.youtube({ version: 'v3', auth: apiKey });
 
-    fs.createReadStream('art.csv')
+    fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (data) => results.push(data['YouTube Link:']))
         .on('end', async () => {
+            const channelsData = [];
+
             for (const url of results) {
                 const result = await convertToChannelIdUrl(url, youtube);
                 if (result.type === 'valid') {
-                    validUrls.push(result.url);
-                } else if (result.type === 'toBeProcessed') {
-                    toBeProcessedUrls.push(result.url);
-                } else {
-                    invalidUrls.push(result.url);
+                    const latestVideos = await getLatestVideos(youtube, result.url.split('/channel/')[1]);
+                    channelsData.push({
+                        channelUrl: result.url,
+                        latestVideos: latestVideos
+                    });
                 }
+                // Process 'toBeProcessed' and 'invalid' URLs as needed
             }
 
-            res.json({
-                validYoutubeUrls: validUrls,
-                toBeProcessedUrls: toBeProcessedUrls,
-                invalidUrls: invalidUrls
-            });
+            // Optionally, delete the file after processing
+            fs.unlinkSync(filePath);
+
+            res.json({ channelsData });
         });
 });
+
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
