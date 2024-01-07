@@ -98,8 +98,8 @@ app.post('/upload-csv', cors(), upload.single('file'), async (req, res) => {
     }
 
     const filePath = path.join(__dirname, req.file.path);
-    const results = [];
     const youtube = google.youtube({ version: 'v3', auth: apiKey });
+    const results = [];
 
     fs.createReadStream(filePath)
         .pipe(csv())
@@ -116,17 +116,40 @@ app.post('/upload-csv', cors(), upload.single('file'), async (req, res) => {
                         latestVideos: latestVideos
                     });
                 }
-                // Process 'toBeProcessed' and 'invalid' URLs as needed
             }
 
-            // Send the processed data back to the client
-            res.json({ channelsData });
+            // Generate Word document
+            const docx = officegen('docx');
+            channelsData.forEach(channel => {
+                let pObj = docx.createP();
+                pObj.addText(`Channel URL: ${channel.channelUrl}`, { bold: true });
+
+                if (channel.latestVideos.length > 0) {
+                    channel.latestVideos.forEach(video => {
+                        pObj = docx.createP();
+                        pObj.addText(video);
+                    });
+                } else {
+                    pObj = docx.createP();
+                    pObj.addText('No latest videos available');
+                }
+            });
+
+            // Send document as a response
+            const docxData = [];
+            docx.generate(res, {
+                'finalize': function (written) {
+                    console.log('Finish to create a Word file.');
+                },
+                'error': function (err) {
+                    console.log(err);
+                }
+            });
 
             // Optionally, delete the uploaded CSV file
             fs.unlinkSync(filePath);
         });
 });
-
 
 
 app.listen(port, () => {
