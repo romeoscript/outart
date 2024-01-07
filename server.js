@@ -5,8 +5,10 @@ const { google } = require('googleapis');
 const { log } = require('console');
 const multer = require('multer')
 const cors = require('cors');
+const { Document, Packer, Paragraph, TextRun } = require('docx');
 const app = express();
 const port = 4000;
+const officegen = require('officegen');
 const path = require('path')
 const apiKey = 'AIzaSyDgFfQZhNTQOW5J_K81GebJ3fzLqx75OJw';
 
@@ -90,7 +92,7 @@ async function getLatestVideos(youtube, channelId) {
         return [];
     }
 }
-app.post('/upload-csv',  cors(), upload.single('file'), async (req, res) => {
+app.post('/upload-csv', cors(), upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).send('No file uploaded.');
     }
@@ -117,12 +119,14 @@ app.post('/upload-csv',  cors(), upload.single('file'), async (req, res) => {
                 // Process 'toBeProcessed' and 'invalid' URLs as needed
             }
 
-            // Optionally, delete the file after processing
-            fs.unlinkSync(filePath);
-
+            // Send the processed data back to the client
             res.json({ channelsData });
+
+            // Optionally, delete the uploaded CSV file
+            fs.unlinkSync(filePath);
         });
 });
+
 
 
 app.listen(port, () => {
