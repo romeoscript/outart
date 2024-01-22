@@ -10,7 +10,6 @@ const { google } = require('googleapis');
 const app = express();
 const port = 4000;
 const upload = multer({ dest: 'uploads/' });
-const youtube = google.youtube({ version: 'v3', auth: 'AIzaSyDJ0TgnGyTgVLeGogPQu3LugEEMpZx4inc' }); // Replace with your API Key
 
 app.use(cors());
 
@@ -19,8 +18,9 @@ function isValidYoutubeChannelUrl(url) {
     return urlPattern.test(url);
 }
 
-async function getLatestVideos(channelId) {
+async function getLatestVideos(channelId, apiKey) {
     try {
+        const youtube = google.youtube({ version: 'v3', auth: apiKey }); // Use the API key passed from frontend
         const response = await youtube.search.list({
             part: 'snippet',
             channelId: channelId,
@@ -48,11 +48,12 @@ app.post('/upload-csv', cors(), upload.single('file'), async (req, res) => {
         .on('data', (data) => results.push(data['YouTube Link:']))
         .on('end', async () => {
             const channelsData = [];
+            const apiKey = req.headers['api-key']; // Retrieve API key from the request headers
 
             for (const url of results) {
                 if (isValidYoutubeChannelUrl(url)) {
                     const channelId = url.split('/channel/')[1];
-                    const latestVideos = await getLatestVideos(channelId);
+                    const latestVideos = await getLatestVideos(channelId, apiKey);
                     channelsData.push({
                         channelUrl: url,
                         latestVideos: latestVideos
@@ -79,7 +80,7 @@ app.post('/upload-csv', cors(), upload.single('file'), async (req, res) => {
 
             docx.generate(res, {
                 'finalize': function (written) {
-                    console.log('Finish to create a Word file.');
+                    console.log('Finish creating a Word file.');
                 },
                 'error': function (err) {
                     console.log(err);
